@@ -11,7 +11,7 @@ bot = telebot.TeleBot(BOT_TOKEN)
 
 # راه‌اندازی Gemini
 genai.configure(api_key=GEMINI_KEY)
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash')
 
 # تابع پاسخگویی
 @bot.message_handler(func=lambda m: True)
