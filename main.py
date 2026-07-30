@@ -1,78 +1,108 @@
 import os
 import telebot
 import requests
+import json
 import random
 
 # گرفتن کلیدها از متغیرهای محیطی
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
-HF_TOKEN = os.environ.get('HF_TOKEN')
+ROUTER_API_KEY = os.environ.get('ROUTER_API_KEY')
 
 print(f"BOT_TOKEN: {'set' if BOT_TOKEN else 'NOT SET'}")
-print(f"HF_TOKEN: {'set' if HF_TOKEN else 'NOT SET'}")
+print(f"ROUTER_API_KEY: {'set' if ROUTER_API_KEY else 'NOT SET'}")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# پاسخ‌های آماده (فوق‌العاده ساده و مطمئن)
-SMART_RESPONSES = {
-    "سلام": ["سلام! خوش اومدی! 😊", "سلام دوست من! چطوری؟", "سلام! حالت چطوره؟"],
-    "حالت چطوره": ["ممنون، خوبم! تو چطوری؟ 😊", "عالیم! ممنون که پرسیدی.", "خوبم ممنون! تو چخبر؟"],
-    "اسم چیه": ["من دانیال هستم، دستیار هوش مصنوعی تو! 🤖", "اسم من دانیاله! 😊"],
-    "کی هستی": ["من یه ربات هوش مصنوعی هستم که توسط هرمس ساخته شدم! 🤖", "من دانیال، دستیار تو هستم!"],
-    "ممنون": ["خواهش میکنم! 😊", "قابلی نداشت! 💪", "خوشحالم کمکتون کردم!"],
-    "خداحافظ": ["خداحافظ! موفق باشی! 👋", "بای بای! روز خوبی داشته باشی! 😊"],
+# آدرس API 9router (OpenAI-compatible)
+ROUTER_API_URL = "https://9router-production-2e07.up.railway.app/v1/chat/completions"
+
+# پاسخ‌های آماده
+FALLBACK_RESPONSES = {
+    "سلام": ["سلام! خوش اومدی! 😊", "سلام دوست من! چطوری؟"],
+    "حالت چطوره": ["ممنون، خوبم! تو چطوری؟ 😊"],
+    "اسم چیه": ["من دانیال هستم، دستیار هوش مصنوعی تو! 🤖"],
+    "کی هستی": ["من یه ربات هوش مصنوعی هستم! 🤖"],
+    "خداحافظ": ["خداحافظ! موفق باشی! 👋"],
 }
 
-# تابع پاسخ هوشمند
-def smart_reply(text):
-    text_lower = text.lower().strip()
+def get_ai_response(text):
+    """گرفتن پاسخ از 9router"""
+    if not ROUTER_API_KEY:
+        print("ROUTER_API_KEY not set!")
+        return None
     
-    # چک کردن پاسخ‌های آماده
-    for key, responses in SMART_RESPONSES.items():
+    try:
+        headers = {
+            "Authorization": f"Bearer {ROUTER_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "mimo",
+            "messages": [
+                {"role": "system", "content": "تو یک دستیار فارسی هستی به اسم دانیال. مهربان و دوستانه جواب بده."},
+                {"role": "user", "content": text}
+            ],
+            "max_tokens": 500,
+            "temperature": 0.7
+        }
+        
+        print(f"Calling 9router API...")
+        response = requests.post(
+            ROUTER_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        
+        print(f"Status: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'choices' in data and len(data['choices']) > 0:
+                return data['choices'][0]['message']['content']
+        
+        print(f"Error: {response.text[:200]}")
+        return None
+        
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
+
+def get_fallback_response(text):
+    """پاسخ آماده"""
+    text_lower = text.lower().strip()
+    for key, responses in FALLBACK_RESPONSES.items():
         if key in text_lower:
             return random.choice(responses)
-    
-    # اگه پیدا نشد، از AI استفاده کن
-    if HF_TOKEN:
-        try:
-            headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-            payload = {
-                "inputs": text,
-                "parameters": {"max_new_tokens": 150, "temperature": 0.8}
-            }
-            
-            response = requests.post(
-                "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
-                headers=headers, json=payload, timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if isinstance(data, list) and len(data) > 0:
-                    ai_reply = data[0].get('generated_text', '')
-                    if ai_reply and ai_reply != text and len(ai_reply) > 5:
-                        return ai_reply[:500]
-        except:
-            pass
-    
-    # پاسخ پیش‌فرض
-    return f"🤖 من متوجه شدم! ولی هنوز دارم یاد میگیرم. سوال دیگه‌ای داری؟"
+    return None
 
-# دستور شروع
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    bot.reply_to(message, "سلام! 👋\nمن دانیال هستم، ربات هوش مصنوعی تو!\nهر سوالی بپرس جواب میدم! 🤖")
+    bot.reply_to(message, "سلام! 👋\nمن دانیال هستم، ربات هوش مصنوعی تو!\nبا 9router و Mimo کار می‌کنم! 🤖\nهر سوالی بپرس جواب میدم!")
 
-# پاسخ به همه پیام‌ها
 @bot.message_handler(func=lambda m: True)
 def handle_message(message):
     try:
         print(f"Received: {message.text}")
-        reply = smart_reply(message.text)
-        bot.reply_to(message, reply)
-        print(f"Replied: {reply[:100]}")
+        
+        # AI رو امتحان کن
+        ai_reply = get_ai_response(message.text)
+        
+        if ai_reply:
+            bot.reply_to(message, ai_reply)
+            print(f"AI Reply: {ai_reply[:100]}")
+        else:
+            # پاسخ آماده
+            fallback = get_fallback_response(message.text)
+            if fallback:
+                bot.reply_to(message, fallback)
+            else:
+                bot.reply_to(message, "🤖 ممنون از پیامت! من هنوز در حال یادگیری هستم.")
+        
     except Exception as e:
         print(f"Error: {str(e)}")
-        bot.reply_to(message, "🤖 ممنون از پیامت! من هنوز در حال یادگیری هستم.")
+        bot.reply_to(message, "🤖 ممنون از پیامت!")
 
-print("🤖 Bot is running...")
+print("🤖 Bot is running with 9router + Mimo!")
 bot.infinity_polling()
